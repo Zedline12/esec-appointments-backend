@@ -1,15 +1,15 @@
 import {
+  IsBoolean,
   IsEmail,
-  IsInt,
   IsNotEmpty,
   IsNumber,
+  IsOptional,
   IsString,
   Max,
   Min,
 } from 'class-validator';
-import { ScholarshipType } from '../entities/appointment.entity';
 
-export class CreateAppointmentDto {
+export class CreateReservationDto {
   @IsNotEmpty()
   @IsEmail()
   email: string;
@@ -17,16 +17,15 @@ export class CreateAppointmentDto {
   @IsString()
   password: string;
   @IsNotEmpty()
-  @IsNumber()
-  @Min(2)
-  @Max(10)
-  scolarshipType: number;
+  scholarshipType: string;
   @IsNotEmpty()
-  @IsNumber()
-  @Min(2)
-  @Max(5)
-  passportOption: number;
+  passportOption: string;
   @IsNotEmpty()
   @IsNumber()
   transactionsCount: number;
+  @IsNotEmpty()
+  @IsBoolean()
+  isDateAutomatic: boolean;
+   @IsOptional()
+  reservationDate: Date;
 }

@@ -1,20 +1,36 @@
-import { HttpException, HttpStatus, Logger, Module } from '@nestjs/common';
+import {
+  forwardRef,
+  HttpException,
+  HttpStatus,
+  Logger,
+  Module,
+  OnModuleInit,
+} from '@nestjs/common';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
-import { AppointmentsModule } from './domains/appointments/appointments.module';
 import { OnEvent } from '@nestjs/event-emitter';
-import { AppGateway } from './app.gateway';
-
+import { MongooseModule } from '@nestjs/mongoose';
+import { ReservationsModule } from './domains/reservations/reservations.module';
+import { GatewayModule } from './domains/gateway/gateway.module';
+import { ReservationsService } from './domains/reservations/reservations.service';
+import { AppGatewayService } from './domains/gateway/app.gateway.service';
+import { ReservationRpa } from './domains/reservations/reservation.rpa';
+import mongoose from 'mongoose';
+import { AppBootstrapService } from './domains/reservations/app.bootstrap.service';
+import { SettingsModule } from './domains/settings/settings.module';
 @Module({
-  imports: [AppointmentsModule],
+  imports: [
+    MongooseModule.forRoot('mongodb://localhost:27017/', {
+      dbName: 'esec',
+    }),
+    GatewayModule,
+    SettingsModule,
+    ReservationsModule,
+  ],
   controllers: [AppController],
-  providers: [AppService,AppGateway],
+  providers: [AppService],
+  exports: [],
 })
 export class AppModule {
-  private readonly logger = new Logger(AppModule.name);
-  @OnEvent('puppeteer.error')
-  handlePuppeteerError(error: Error) {
-    this.logger.error('Puppeteer Error:', error.message);
-    throw new HttpException(error.message, HttpStatus.BAD_REQUEST);
-  }
+  constructor() {}
 }

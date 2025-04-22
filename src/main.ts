@@ -9,6 +9,8 @@ async function bootstrap() {
   app.useGlobalFilters(new HttpExceptionFilter()); // Register the filter globally
   app.useGlobalInterceptors(new ResponseInterceptor());
   app.useGlobalPipes(new ValidationPipe());
+  app.enableCors();
   await app.listen(3000);
+
 }
 bootstrap();
