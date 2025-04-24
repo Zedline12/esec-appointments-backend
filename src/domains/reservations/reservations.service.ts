@@ -36,10 +36,8 @@ export class ReservationsService {
       .populate('scholarshipType passportOption');
   }
   async createReservation(createAppointmentDto: CreateReservationDto) {
-    const result = await (
-      await this.reservationModel.create(createAppointmentDto)
-    ).populate('scholarshipType passportOption');
-    this.AppbootstrapService.pushNewReservation(result);
+    const result =
+      await await this.reservationModel.create(createAppointmentDto);
     return result;
   }
   async deleteAllReservations() {
@@ -74,7 +72,7 @@ export class ReservationsService {
       const data = XLSX.utils.sheet_to_json(
         XLSX.read(csvContent, { type: 'string' }).Sheets.Sheet1,
       );
-      console.log(data)
+      console.log(data);
       // Convert Excel serial date number to JavaScript Date
       const processedData = data.map((row: any) => {
         const [col1, col2, col3, col4, col5, col6]: any[] = Object.values(row);
@@ -132,11 +130,10 @@ export class ReservationsService {
         reservationDate: record.reservationDate,
         state: 0,
       }));
-      
+
       if (reservationsToCreate.length > 0) {
         const result =
           await this.reservationModel.insertMany(reservationsToCreate);
-        this.AppbootstrapService.pushReservationList(result);
       }
 
       return processedData;

@@ -19,12 +19,16 @@ import mongoose from 'mongoose';
 import { ReservationRpa } from './reservation.rpa';
 import * as ExcelJS from 'exceljs';
 import { Response } from 'express';
+import { SettingsService } from '../settings/settings.service';
+import { AppBootstrapService } from './app.bootstrap.service';
 @Controller('reservations')
 export class ReservationsController {
   constructor(
     private readonly reservationsService: ReservationsService,
     private readonly reservationRpa: ReservationRpa,
     private readonly gatewayService: AppGatewayService,
+    private readonly settingsService: SettingsService,
+    private readonly appBootstrapService: AppBootstrapService,
   ) {}
 
   @Post()
@@ -33,10 +37,19 @@ export class ReservationsController {
       createReservationDto,
     );
   }
+  @Get('start')
+  async startReservations() {
+    await this.settingsService.updateStart(true);
+    await this.appBootstrapService.startReservations();
+  }
+  @Get('stop')
+  async stopReservations() {
+    await this.settingsService.updateStart(false);
+  }
   @Delete()
   async deleteAll() {
     return await this.reservationsService.deleteAllReservations();
-    }
+  }
   @Get('export')
   async exportReservations(@Res() res: Response) {
     const reservations = await this.reservationsService.exportAllReservations();

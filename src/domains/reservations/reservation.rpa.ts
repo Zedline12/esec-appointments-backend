@@ -19,7 +19,8 @@ import { SettingsService } from '../settings/settings.service';
 import { Settings } from '../settings/settings.entity';
 import { IReservationToCreate } from './app.bootstrap.service';
 import { resolve } from 'path';
-const HttpsProxyAgent = require('https-proxy-agent');
+import { HttpsProxyAgent } from 'https-proxy-agent';
+import fetch from 'node-fetch';
 puppeteer.use(StealthPlugin());
 
 export interface ReservationProcessCurrentState {
@@ -74,42 +75,43 @@ export class ReservationRpa {
     reservations: IReservationToCreate[],
   ): Promise<string> {
     return new Promise(async (resolve, reject) => {
-      const taskList: IReservationToCreate[] = reservations;
+      let taskList: IReservationToCreate[] = reservations;
       if (taskList.length) {
-        console.log(taskList);
-        while (taskList.length > 0) {
-          try {
-            const proxy =
-              'http://2f957320733b8578ba35__cr.fr:9919acfe08c2c6b1@gw.dataimpulse.com:823'; // Adjust if auth is not needed
+        await Promise.allSettled(
+          taskList.map((task) => this.startFunctions(task)),
+        );
+        // while (taskList.length > 0) {
+        //   try {
+        //     const start = (await this.settingsService.getSettings()).start;
+        //     if (!start){
+        //       taskList = [];
+        //       reservations = [];
+        //       reject("out")
+        // break;
+        // };
+        //     let reservationData: IReservationToCreate = taskList[0];
+        //     const newUserData = await this.reservationService.findOneById(
+        //       reservationData.reservationId,
+        //     );
+        //     if (!newUserData) {
+        //       taskList.shift();
+        //     } else {
+        //       const proxy =
+        //         'http://2f957320733b8578ba35__cr.fr:9919acfe08c2c6b1@gw.dataimpulse.com:823'; // Adjust if auth is not needed
 
-            // Create an agent using your proxy
-            const agent = new HttpsProxyAgent(proxy);
-            const response = await fetch(
-              'https://api.ipify.org?format=json',
-              agent,
-            );
-
-            const data = await response.json();
-            console.log('Your public IP is:', data.ip);
-            // let reservationData: IReservationToCreate = taskList[0];
-            // const newUserData = await this.reservationService.findOneById(
-            //   reservationData.reservationId,
-            // );
-            // if (!newUserData) {
-            //   taskList.shift();
-            // } else {
-            //    console.log("working on",taskList[0].email)
-            //   await this.startFunctions(taskList[0]);
-            //   taskList.shift();
-            // }
-          } catch (err) {
-            console.log(err);
-            break;
-            // console.log('rejecting');
-            // taskList.push(taskList.shift());
-          }
-        }
-        resolve('ended');
+        //       // Create an agent using your proxy
+        //       const agent = new HttpsProxyAgent(proxy, { keepAlive: true });
+        //       taskList[0].agent = agent;
+        //       await this.startFunctions(taskList[0]);
+        //       console.log('continue after awaiting');
+        //       taskList.shift();
+        //     }
+        //   } catch (err) {
+        //     console.log('rejecting');
+        //     taskList.push(taskList.shift());
+        //   }
+        // }
+        //  resolve('ended');
       }
     });
   }
@@ -209,7 +211,7 @@ export class ReservationRpa {
         }
         const timeoutId = setTimeout(() => {
           controller.abort();
-        }, 10000);
+        }, 15000);
         await pRetry(
           async () => {
             process.env['NODE_TLS_REJECT_UNAUTHORIZED'] = '0';
@@ -242,10 +244,10 @@ export class ReservationRpa {
                   password: reservationData.password,
                 }),
                 signal: controller.signal,
+                agent: reservationData.agent,
               },
             )
               .then(async (response) => {
-                console.log(response);
                 const data = await response.json();
                 //return server error
                 if (
@@ -254,9 +256,9 @@ export class ReservationRpa {
                   const currentState = {
                     reservationId: reservationData.reservationId,
                     state: 0,
-                    message: data.Message,
+                    message: (data as any).Message,
                     isError: true,
-                    errorCode: data.ErrorCode,
+                    errorCode: (data as any).ErrorCode,
                   };
                   this.gatewayService.updateReservationState(currentState);
                   throw new Error('STOP');
@@ -264,7 +266,7 @@ export class ReservationRpa {
                 reservationData.cookie = response.headers
                   .get('set-cookie')
                   .split(';')[0];
-                reservationData.user = data.P_PROFILE_RESULT;
+                reservationData.user = (data as any).P_PROFILE_RESULT;
                 const currentState = {
                   reservationId: reservationData.reservationId,
                   state: 0,
@@ -277,7 +279,6 @@ export class ReservationRpa {
                 this.gatewayService.updateReservationState(currentState);
               })
               .catch((err) => {
-                console.log(err);
                 if (err.message == 'STOP') {
                   throw new Error('STOP');
                 }
@@ -291,7 +292,10 @@ export class ReservationRpa {
                       errorCode: 'RESPONSE_TIMEOUT',
                     };
                     this.gatewayService.updateReservationState(state);
-                    throw new Error('retry');
+                    throw new Error('STOP');
+                  } else {
+                    console.log('Abort stopping');
+                    throw new Error('STOP');
                   }
                   //if server takes too long to respond
                 } else {
@@ -311,6 +315,7 @@ export class ReservationRpa {
             retries: 9999999,
             minTimeout: 2000,
             onFailedAttempt: (error) => {
+              console.log('abort error on failed attempt');
               if (error.message == 'STOP') {
                 throw new Error('stoping');
               }
@@ -334,7 +339,7 @@ export class ReservationRpa {
             const controller = new AbortController();
 
             // 5 second timeout:
-
+            let abortReason = 0;
             const timeoutId = setTimeout(() => {
               controller.abort();
             }, 10000);
@@ -343,7 +348,11 @@ export class ReservationRpa {
               serviceId: reservationData.passportOption.toString(),
               companion: reservationData.transactionsCount.toString(),
             };
-
+            const start = (await this.settingsService.getSettings()).start;
+            if (!start) {
+              abortReason = 1;
+              controller.abort();
+            }
             // Convert the params object into a query string
             const queryString = new URLSearchParams(params).toString();
             const result = await fetch(
@@ -371,23 +380,23 @@ export class ReservationRpa {
                   'User-Agent':
                     'Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Mobile Safari/537.36',
                 },
-                signal: controller.signal, // Include cookies/sessions
+                signal: controller.signal,
+                agent: reservationData.agent, // Include cookies/sessions
               },
             )
               .then(async (response) => {
                 //UA100
                 const data = await response.json();
-                console.log(response);
-                console.log(data);
+
                 if (
                   ![200, 201, 202, 203, 204, 205, 206].includes(response.status)
                 ) {
                   const currentState = {
                     reservationId: reservationData.reservationId,
                     state: 0,
-                    message: data.Message,
+                    message: (data as any).Message,
                     isError: true,
-                    errorCode: data.ErrorCode,
+                    errorCode: (data as any).ErrorCode,
                   };
                   this.gatewayService.updateReservationState(currentState);
                   if ((currentState as any).errorCode === 'UA100') {
@@ -401,7 +410,6 @@ export class ReservationRpa {
                   }
                   throw new Error('retry');
                 } else {
-                  console.log(data);
                   if (!(data as any).length) {
                     const currentState = {
                       reservationId: reservationData.reservationId,
@@ -423,13 +431,12 @@ export class ReservationRpa {
                       index: 1,
                     };
                     this.gatewayService.updateReservationState(currentState);
-                    const dates = data;
+                    const dates: string[] = data as string[];
                     const earliest = dates.reduce((a, b) =>
                       new Date(a) < new Date(b) ? a : b,
                     );
                     let date;
                     if (reservationData.isDateAutomatic) {
-                      console.log('Earliest date:', earliest);
                       date = earliest;
                     } else {
                       if (dates.includes(reservationData.reservationDate)) {
@@ -458,21 +465,24 @@ export class ReservationRpa {
                 }
               })
               .catch(async (err) => {
-                console.log(err);
                 if (err.message == 'STOP') {
                   throw new Error('STOP');
                 }
                 if (err.name == 'AbortError') {
                   //if server takes too long to respond
-                  const state = {
-                    reservationId: reservationData.reservationId,
-                    state: 0,
-                    message: 'الموقع لا يستجيب',
-                    isError: true,
-                    errorCode: 'RESPONSE_TIMEOUT',
-                  };
-                  await this.gatewayService.updateReservationState(state);
-                  throw new Error('retry');
+                  if (abortReason == 0) {
+                    const state = {
+                      reservationId: reservationData.reservationId,
+                      state: 0,
+                      message: 'الموقع لا يستجيب',
+                      isError: true,
+                      errorCode: 'RESPONSE_TIMEOUT',
+                    };
+                    await this.gatewayService.updateReservationState(state);
+                    throw new Error('retry');
+                  } else {
+                    throw new Error('STOP');
+                  }
                 } else {
                   const state = {
                     reservationId: reservationData.reservationId,
@@ -730,14 +740,19 @@ export class ReservationRpa {
               P_USERNAME: 'WebSite',
               P_ZPROCESSID: 178800193,
             };
-            console.log(payload);
-            const controller = new AbortController();
 
+            const controller = new AbortController();
+            let abortReason: number = 0;
             // 5 second timeout:
 
             const timeoutId = setTimeout(() => {
               controller.abort();
             }, 10000);
+            const start = (await this.settingsService.getSettings()).start;
+            if (!start) {
+              abortReason = 1;
+              controller.abort();
+            }
             await fetch('https://ecsc-expat.sy:8080/dbm/db/execute', {
               method: 'POST',
               headers: {
@@ -766,7 +781,8 @@ export class ReservationRpa {
                 'X-Remote-IP': '195.160.118.195',
               },
               body: JSON.stringify(payload),
-              signal: controller.signal, // Include existing cookies like SESSION
+              signal: controller.signal,
+              agent: reservationData.agent, // Include existing cookies like SESSION
             })
               .then(async (response) => {
                 //UA100
@@ -777,9 +793,9 @@ export class ReservationRpa {
                   const state = {
                     reservationId: reservationData.reservationId,
                     state: 0,
-                    message: data.Message,
+                    message: (data as any).Message,
                     isError: true,
-                    errorCode: data.ErrorCode,
+                    errorCode: (data as any).ErrorCode,
                   };
                   if (state.errorCode === 'UA100') {
                     await this.gatewayService.updateReservationState(state);
@@ -789,26 +805,29 @@ export class ReservationRpa {
                     throw new Error('STOP');
                   }
                 } else {
-                  PID = data.P_ID;
+                  PID = (data as any).P_ID;
                 }
               })
               //  .then(data => console.log('✅ Response:', data))
               .catch(async (err) => {
-                console.log(err);
                 if (err.message == 'STOP') {
                   throw new Error('STOP');
                 }
                 if (err.name == 'AbortError') {
                   //if server takes too long to respond
-                  const state = {
-                    reservationId: reservationData.reservationId,
-                    state: 0,
-                    message: 'الموقع لا يستجيب',
-                    isError: true,
-                    errorCode: 'RESPONSE_TIMEOUT',
-                  };
-                  await this.gatewayService.updateReservationState(state);
-                  throw new Error('retry');
+                  if (abortReason == 0) {
+                    const state = {
+                      reservationId: reservationData.reservationId,
+                      state: 0,
+                      message: 'الموقع لا يستجيب',
+                      isError: true,
+                      errorCode: 'RESPONSE_TIMEOUT',
+                    };
+                    await this.gatewayService.updateReservationState(state);
+                    throw new Error('retry');
+                  } else {
+                    throw new Error('STOP');
+                  }
                 } else {
                   const state = {
                     reservationId: reservationData.reservationId,
@@ -836,7 +855,7 @@ export class ReservationRpa {
       } catch (err) {
         reject('stoping at first result');
       }
-      console.log(PID);
+
       try {
         await pRetry(
           async () => {
@@ -847,6 +866,12 @@ export class ReservationRpa {
             const timeoutId = setTimeout(() => {
               controller.abort();
             }, 10000);
+            let abortReason = 0;
+            const start = (await this.settingsService.getSettings()).start;
+            if (!start) {
+              abortReason = 1;
+              controller.abort();
+            }
             await fetch(`https://ecsc-expat.sy:8080/rs/reserve?id=${PID}`, {
               method: 'GET',
               headers: {
@@ -873,12 +898,12 @@ export class ReservationRpa {
                 'X-Forwarded-For': '195.160.118.195',
                 'X-Remote-IP': '195.160.118.195',
               },
-              signal: controller.signal, // Include existing cookies like SESSION
+              signal: controller.signal,
+              agent: reservationData.agent, // Include existing cookies like SESSION
             })
               .then(async (response) => {
                 //UA100
 
-                console.log(response);
                 if (
                   ![200, 201, 202, 203, 204, 205, 206].includes(response.status)
                 ) {
@@ -886,9 +911,9 @@ export class ReservationRpa {
                   const state = {
                     reservationId: reservationData.reservationId,
                     state: 0,
-                    message: data.Message,
+                    message: (data as any).Message,
                     isError: true,
-                    errorCode: data.ErrorCode,
+                    errorCode: (data as any).ErrorCode,
                   };
                   if (state.errorCode === 'UA100') {
                     await this.gatewayService.updateReservationState(state);
@@ -920,21 +945,24 @@ export class ReservationRpa {
               })
               //  .then(data => console.log('✅ Response:', data))
               .catch(async (err) => {
-                console.log(err);
                 if (err.message == 'STOP') {
                   throw new Error('STOP');
                 }
                 if (err.name == 'AbortError') {
+                  if (abortReason == 0) {
+                    const state = {
+                      reservationId: reservationData.reservationId,
+                      state: 0,
+                      message: 'الموقع لا يستجيب',
+                      isError: true,
+                      errorCode: 'RESPONSE_TIMEOUT',
+                    };
+                    await this.gatewayService.updateReservationState(state);
+                    throw new Error('retry');
+                  } else {
+                    throw new Error('STOP');
+                  }
                   //if server takes too long to respond
-                  const state = {
-                    reservationId: reservationData.reservationId,
-                    state: 0,
-                    message: 'الموقع لا يستجيب',
-                    isError: true,
-                    errorCode: 'RESPONSE_TIMEOUT',
-                  };
-                  await this.gatewayService.updateReservationState(state);
-                  throw new Error('retry');
                 } else {
                   const state = {
                     reservationId: reservationData.reservationId,

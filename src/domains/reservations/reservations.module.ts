@@ -16,6 +16,7 @@ import { UserModule } from '../user/user.module';
 import { ReservationRpa } from './reservation.rpa';
 import { AppBootstrapService } from 'src/domains/reservations/app.bootstrap.service';
 import { SettingsModule } from '../settings/settings.module';
+import { ChunkModule } from '../chunk/chunk.module';
 
 @Module({
   imports: [
@@ -33,7 +34,8 @@ import { SettingsModule } from '../settings/settings.module';
     NotificationsModule,
     GatewayModule,
     UserModule,
-    SettingsModule
+    SettingsModule,
+    ChunkModule
   ],
   controllers: [ReservationsController],
   providers: [ReservationsService, ReservationRpa, AppBootstrapService],

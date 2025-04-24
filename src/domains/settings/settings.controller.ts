@@ -16,7 +16,10 @@ import { Settings } from './settings.entity';
         console.log(updateSettingsDto)
       return await this.settingsService.editSettings(updateSettingsDto);
     }
-  
+  @Patch("chunksSizes")
+  async updateChunkSizes(@Body("chunksSizes") chunksSizes: number) {
+       return await this.settingsService.updateChunksSizes(chunksSizes);
+     }  
     @Get()
    async findAll() {
       return await this.settingsService.getSettings();
