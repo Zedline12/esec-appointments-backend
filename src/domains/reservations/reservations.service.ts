@@ -23,7 +23,7 @@ export class ReservationsService {
     private reservationScholarshipTypeModel: Model<ReservationScholarshipType>,
     @InjectModel(ReservationPassportOption.name)
     private reservationPassportOptionModel: Model<ReservationPassportOption>,
-    private readonly settingsService:SettingsService
+    private readonly settingsService: SettingsService,
   ) {}
   async delay(ms: number) {
     return new Promise((resolve) => setTimeout(resolve, ms));
@@ -40,13 +40,20 @@ export class ReservationsService {
   }
   async deleteAllReservations() {
     await this.reservationModel.deleteMany({ state: 0 });
-   return await this.settingsService.deleteAllChunks();
+    return await this.settingsService.deleteAllChunks();
   }
   async findOneById(id: string) {
     return await this.reservationModel
       .findById(new mongoose.Types.ObjectId(id))
       .populate('scholarshipType passportOption');
   }
+  excelSerialDateToJSDate(serial) {
+   console.log(serial)
+  const excelEpoch = new Date(Date.UTC(1899, 11, 30)); // Excel's epoch is 1899-12-30
+  const millisecondsInDay = 86400 * 1000;
+  const jsDate = new Date(excelEpoch.getTime() + (serial * millisecondsInDay));
+  return jsDate;
+}
   convertToDate(value: any): string | null {
     let date: Date | null = null;
 
@@ -59,6 +66,7 @@ export class ReservationsService {
       const excelStartDate = new Date(Date.UTC(1899, 11, 30)); // Use UTC to avoid timezone shifts
       const millisecondsPerDay = 86400 * 1000;
       date = new Date(excelStartDate.getTime() + value * millisecondsPerDay);
+    
     }
 
     if (!date || isNaN(date.getTime())) return null;
@@ -72,19 +80,19 @@ export class ReservationsService {
   }
   async processExcelFile(file: Express.Multer.File) {
     try {
-      const workbook = XLSX.read(file.buffer, { type: 'buffer' });
+      const workbook = XLSX.read(file.buffer, { raw:true ,cellDates:false});
       const sheetName = workbook.SheetNames[0];
       const worksheet = workbook.Sheets[sheetName];
       const csvContent = file.buffer.toString('utf-8'); // Buffer → string
 
       const data = XLSX.utils.sheet_to_json(
-        XLSX.read(csvContent, { type: 'string' }).Sheets.Sheet1,
+        worksheet,{raw:true}
       );
-      console.log(data);
+      console.log(data)
+
       // Convert Excel serial date number to JavaScript Date
       const processedData = data.map((row: any) => {
         const [col1, col2, col3, col4, col5, col6]: any[] = Object.values(row);
-        console.log(this.convertToDate(col3));
         //  console.log(new Date(new Date((col3 - 25569) * 86400 * 1000)))
         return {
           email: col1,
@@ -96,7 +104,6 @@ export class ReservationsService {
           isDateAutomatic: false,
         };
       });
-      console.log(processedData);
       // console.log(processedData);
       // Process each row and create reservations for new users
       // Get existing reservations with state == 0
