@@ -1,4 +1,6 @@
 import {
+  ConnectedSocket,
+  MessageBody,
   SubscribeMessage,
   WebSocketGateway,
   WebSocketServer,
@@ -15,9 +17,10 @@ import { Subject } from 'rxjs/internal/Subject';
   },
 })
 export class AppGatewayService {
-  constructor() { }
+  constructor() {}
   @WebSocketServer()
   server: Server;
+  public shutdown$ = new Subject<any>(); // 🔴 Added observable for shutdown event
   handleConnection(client: Socket): void {
     this.server.emit('room', client.id + ' joined!');
   }
@@ -28,7 +31,8 @@ export class AppGatewayService {
   }
   reservationProcessCreated(message: string) {
     this.server.emit('reservationProcessCreated', message);
-  }h
+  }
+  h;
   updateReservationState(
     reservationProcessCurrentState: ReservationProcessCurrentState,
   ) {
@@ -40,6 +44,17 @@ export class AppGatewayService {
     this.server.emit('notification', message);
   }
 
+  @SubscribeMessage('shutdown')
+  handleShutdown(
+    @MessageBody() message: any,
+    @ConnectedSocket() client: Socket,
+  ): void {
+    console.log(`Received shutdown event from client ${client.id}:`, message);
 
-
+    // Emit to internal observable only
+    this.shutdown$.next({
+      clientId: client.id,
+      payload: message,
+    });
+  }
 }

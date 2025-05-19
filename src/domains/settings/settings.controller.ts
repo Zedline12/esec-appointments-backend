@@ -3,9 +3,11 @@ import {
     Get,
     Body,
     Patch,
+    Param,
   } from '@nestjs/common';
 import { SettingsService } from './settings.service';
 import { Settings } from './settings.entity';
+import mongoose, { mongo } from 'mongoose';
   
   @Controller('settings')
   export class SettingsController {
@@ -13,12 +15,11 @@ import { Settings } from './settings.entity';
   
     @Patch()
     async create(@Body() updateSettingsDto: Partial<Settings>) {
-        console.log(updateSettingsDto)
       return await this.settingsService.editSettings(updateSettingsDto);
     }
-  @Patch("chunksSizes")
-  async updateChunkSizes(@Body("chunksSizes") chunksSizes: number) {
-       return await this.settingsService.updateChunksSizes(chunksSizes);
+  @Patch("chunk/:id")
+  async updateChunkSizes(@Param('id') id: string,@Body("interval") interval: number) {
+       return await this.settingsService.updateChunk(new mongoose.Types.ObjectId(id), interval);
      }  
     @Get()
    async findAll() {

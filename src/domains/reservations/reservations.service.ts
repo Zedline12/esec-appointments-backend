@@ -12,20 +12,18 @@ import {
 import { AppGatewayService } from '../gateway/app.gateway.service';
 import * as XLSX from 'xlsx';
 import { AppBootstrapService } from 'src/domains/reservations/app.bootstrap.service';
+import { SettingsService } from '../settings/settings.service';
 
 @Injectable()
 export class ReservationsService {
   constructor(
-    private readonly userService: UserService,
-    private readonly gatewayService: AppGatewayService,
     @InjectModel(Reservation.name)
     private reservationModel: Model<Reservation>,
     @InjectModel(ReservationScholarshipType.name)
     private reservationScholarshipTypeModel: Model<ReservationScholarshipType>,
     @InjectModel(ReservationPassportOption.name)
     private reservationPassportOptionModel: Model<ReservationPassportOption>,
-    private readonly reservationRpa: ReservationRpa,
-    private AppbootstrapService: AppBootstrapService,
+    private readonly settingsService:SettingsService
   ) {}
   async delay(ms: number) {
     return new Promise((resolve) => setTimeout(resolve, ms));
@@ -41,26 +39,36 @@ export class ReservationsService {
     return result;
   }
   async deleteAllReservations() {
-    return await this.reservationModel.deleteMany({});
+    await this.reservationModel.deleteMany({ state: 0 });
+   return await this.settingsService.deleteAllChunks();
   }
   async findOneById(id: string) {
     return await this.reservationModel
       .findById(new mongoose.Types.ObjectId(id))
       .populate('scholarshipType passportOption');
   }
-  convertToDate(value: any): Date | null {
+  convertToDate(value: any): string | null {
+    let date: Date | null = null;
+
     if (typeof value === 'string' && /\d{1,2}-\d{1,2}-\d{4}/.test(value)) {
-      // Handle date string in the format dd-mm-yyyy (e.g., "28-3-2025")
+      // Format: dd-mm-yyyy
       const [day, month, year] = value.split('-').map(Number);
-      return new Date(year, month - 1, day); // month is 0-indexed
+      date = new Date(year, month - 1, day);
     } else if (typeof value === 'number') {
-      // Handle Excel serial date format (e.g., 45720.000601851854)
-      const excelStartDate = new Date(1899, 11, 30); // Excel's base date is 30-Dec-1899
+      // Excel serial date
+      const excelStartDate = new Date(Date.UTC(1899, 11, 30)); // Use UTC to avoid timezone shifts
       const millisecondsPerDay = 86400 * 1000;
-      return new Date(excelStartDate.getTime() + value * millisecondsPerDay);
-    } else {
-      return null; // Invalid format
+      date = new Date(excelStartDate.getTime() + value * millisecondsPerDay);
     }
+
+    if (!date || isNaN(date.getTime())) return null;
+
+    // Format as yyyy-mm-dd (local, without time zone issues)
+    const yyyy = date.getFullYear();
+    const mm = String(date.getMonth() + 1).padStart(2, '0');
+    const dd = String(date.getDate()).padStart(2, '0');
+
+    return `${yyyy}-${mm}-${dd}`;
   }
   async processExcelFile(file: Express.Multer.File) {
     try {
@@ -88,6 +96,7 @@ export class ReservationsService {
           isDateAutomatic: false,
         };
       });
+      console.log(processedData);
       // console.log(processedData);
       // Process each row and create reservations for new users
       // Get existing reservations with state == 0
@@ -134,6 +143,7 @@ export class ReservationsService {
       if (reservationsToCreate.length > 0) {
         const result =
           await this.reservationModel.insertMany(reservationsToCreate);
+        await this.settingsService.createChunk(reservationsToCreate.length);
       }
 
       return processedData;
