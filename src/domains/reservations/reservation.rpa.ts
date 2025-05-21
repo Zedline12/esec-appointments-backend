@@ -392,6 +392,7 @@ export class ReservationRpa {
           };
           this.gatewayService.updateReservationState(state);
           if (chunk) {
+            console.log(chunk.interval)
             await new Promise((res, rej) => setTimeout(res, chunk.interval));
           }
           this.findReservation(user, chunk);
@@ -443,7 +444,10 @@ export class ReservationRpa {
       .catch((err) => {
         console.log(err);
         console.log(err.message);
-        if (err.code === 'ECONNRESET') {
+          if (err.message?.includes('Proxy connection ended before receiving CONNECT response')) {
+              this.findReservation(user,chunk);
+    }
+       else if (err.code === 'ECONNRESET') {
           const state = {
             reservationId: user.reservationId,
             state: 0,
@@ -589,8 +593,10 @@ export class ReservationRpa {
           })
           .catch((err) => {
             console.log(err);
-            console.log(err.message);
-            if (err.code === 'ECONNRESET') {
+             if (err.message?.includes('Proxy connection ended before receiving CONNECT response')) {
+             this.excuete(user,chunk);
+    }
+           else if (err.code === 'ECONNRESET') {
               const state = {
                 reservationId: user.reservationId,
                 state: 0,
@@ -611,7 +617,15 @@ export class ReservationRpa {
               this.gatewayService.updateReservationState(state);
               this.excuete(user, chunk);
             } else {
-              const errorResponse = err.response.data;
+             
+    console.error('Axios error:', err.message);
+    console.log(err.message);
+    // Optional: handle proxy-specific error
+   
+
+    // Log full details if needed
+    // console.error('Detailed error:', error);
+     const errorResponse = err.response.data;
               const state = {
                 reservationId: user.reservationId,
                 state: 0,
@@ -637,12 +651,17 @@ export class ReservationRpa {
               } else {
                 this.excuete(user, chunk);
               }
+  
+             
             }
           });
       })
       .catch((err) => {
-        console.log('not else');
-        if (err.code === 'ECONNRESET') {
+        console.log(err);
+                if (err.message?.includes('Proxy connection ended before receiving CONNECT response')) {
+             this.excuete(user,chunk);
+    }
+       else if (err.code === 'ECONNRESET') {
           console.log('ECONNRESET');
           const state = {
             reservationId: user.reservationId,
@@ -667,37 +686,23 @@ export class ReservationRpa {
           this.gatewayService.updateReservationState(state);
           this.excuete(user, chunk);
         } else {
-          console.log('else');
-          if (err.response) {
             const errorResponse = err.response.data;
-            const state = {
-              reservationId: user.reservationId,
-              state: 0,
-              message: errorResponse.Message,
-              isError: true,
-              errorCode: errorResponse.ErrorCode,
-              remove: true,
-            };
-            if (state.errorCode === 'RE100') {
+            if (err.ErrorCode != 'UA100') {
               console.log('YOU ALREADY HAVE A RESERVATION SECOND CATCH');
-              // const state = {
-              //   reservationId: user.reservationId,
-              //   state: 0,
-              //   message: errorResponse.Message,
-              //   isError: true,
-              //   errorCode: errorResponse.ErrorCode,
-              //   remove: true,
-              // };
-              // this.gatewayService.updateReservationState(state);
+              const state = {
+                reservationId: user.reservationId,
+                state: 0,
+                message: errorResponse.Message,
+                isError: true,
+                errorCode: errorResponse.ErrorCode,
+                remove: true,
+              };
+              this.gatewayService.updateReservationState(state);
               return;
-            } else if (state.errorCode === 'UA100') {
-              this.loginUser(user, chunk);
             } else {
-              this.excuete(user, chunk);
+              this.loginUser(user, chunk);
             }
-          } else {
-            this.excuete(user, chunk);
-          }
+        
         }
       });
   }
