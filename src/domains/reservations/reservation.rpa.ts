@@ -92,7 +92,19 @@ export class RequestScheduler {
       // Take a random request from the queue
       const index = Math.floor(Math.random() * this.queue.length);
       const { config, resolve, reject } = this.queue.splice(index, 1)[0];
-      const promise = axios(config)
+      delete config.httpsAgent;
+      const promise = axios({
+        ...config,
+        proxy: {
+          protocol: 'http',
+          host: 'gw.dataimpulse.com',
+          port: 823,
+          auth: {
+            username: '2f957320733b8578ba35__cr.us',
+            password: '9919acfe08c2c6b1',
+          },
+        },
+      })
         .then(resolve)
         .catch(reject)
         .finally(() => {
@@ -244,7 +256,6 @@ export class ReservationRpa {
         } catch (err) {}
       })
       .catch((err) => {
-       
         if (err.code === 'ECONNRESET') {
           const state = {
             reservationId: user.reservationId,
@@ -268,7 +279,7 @@ export class ReservationRpa {
         } else {
           if (err.response) {
             const errorResponse = err.response.data;
-             console.log(errorResponse)
+            console.log(errorResponse);
             if (
               errorResponse.ErrorCode == 'U401' ||
               errorResponse.ErrorCode == 'U423'
